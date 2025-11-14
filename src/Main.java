@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.lang.reflect.Array;
 import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.Queue;
 
 public class Main {
     static ArrayList<String> codes = new ArrayList<>();
@@ -20,115 +22,198 @@ public class Main {
             e.printStackTrace();
         }
     }
-    public static String keyToRobot(String key) {
-        StringBuilder sb = new StringBuilder();
-        Integer current_x = 3, current_y = 2; // Start na 'A'
-        int null_x = 3, null_y = 0; // Pozycja '/'
-
-        for (int i = 0; i < key.length(); i++) {
-            char c = key.charAt(i);
-            int result_x = 0, result_y = 0;
-            for (int j = 0; j < keypad.length; j++) {
-                for (int k = 0; k < keypad[j].length; k++) {
-                    if (keypad[j][k] == c) {
-                        result_x = j;
-                        result_y = k;
-                    }
-                }
-            }
-
-            if (current_x == null_x) { // Jesteśmy w "niebezpiecznym" rzędzie (3)
-                // Musimy najpierw wykonać ruch pionowy
-                while (result_x < current_x) { current_x--; sb.append('^'); }
-                while (result_x > current_x) { current_x++; sb.append('v'); }
-                // Potem ruch poziomy
-                while (result_y < current_y) { current_y--; sb.append('<'); }
-                while (result_y > current_y) { current_y++; sb.append('>'); }
-            }
-            else if (current_y == null_y) { // Jesteśmy w "niebezpiecznej" kolumnie (0)
-                // Musimy najpierw wykonać ruch poziomy
-                while (result_y < current_y) { current_y--; sb.append('<'); }
-                while (result_y > current_y) { current_y++; sb.append('>'); }
-                // Potem ruch pionowy
-                while (result_x < current_x) { current_x--; sb.append('^'); }
-                while (result_x > current_x) { current_x++; sb.append('v'); }
-            }
-            else { // Jesteśmy w "bezpiecznym" miejscu (ani rząd 3, ani kolumna 0)
-                // Kolejność dowolna, np. najpierw pionowo
-                while (result_x < current_x) { current_x--; sb.append('^'); }
-                while (result_x > current_x) { current_x++; sb.append('v'); }
-                // Potem poziomo
-                while (result_y < current_y) { current_y--; sb.append('<'); }
-                while (result_y > current_y) { current_y++; sb.append('>'); }
-            }
-            sb.append('A'); // Wciśnij klawisz
+    public static boolean makesKeypadSense(int curr_x, int curr_y){
+        if(curr_x<0 || curr_y<0 || curr_x>=4 || curr_y>=3){
+            return false;
         }
-        return sb.toString();
+        return true;
     }
-    //to co gemini wypluł ma chyba sens
-    //poniekąd robie bfs ale nie musze nigdzie tego przechowywac
-    //po prostu w mainie sprawdzam najkrotsza trase
-    //poprzez dodanie innej logiki przechodzenia po klawiaturze
-    //i sprawdzenia na każdej warstwie robota
-    //dzisiaj jak wroce do domu to sie tym zajme
-    //teraz czas na ocamla i scale
-    public static String robotToRobot(String key) {
-        StringBuilder sb = new StringBuilder();
-        int current_x = 0, current_y = 2; // Start na 'A'
-        int null_x = 0, null_y = 0; // Pozycja '/'
-
-        for (int i = 0; i < key.length(); i++) {
-            char c = key.charAt(i);
-            int result_x = 0, result_y = 0;
-            for (int j = 0; j < robotControl.length; j++) {
-                for (int k = 0; k < robotControl[j].length; k++) {
-                    if (robotControl[j][k] == c) {
-                        result_x = j;
-                        result_y = k;
+    public static boolean makesRobotSense(int curr_x, int curr_y){
+        if(curr_x<0 || curr_y<0 || curr_x>=2 || curr_y>=3){
+            return false;
+        }
+        return true;
+    }
+    public static int runCode(String code){
+        ArrayList<Searcher> fstLayer = new ArrayList<>();
+        ArrayList<String> ret = new ArrayList<>();
+        ArrayList<Searcher> sndLayer = new ArrayList<>();
+        ArrayList<Searcher> trdLayer = new ArrayList<>();
+        fstLayer=decode(code, true);
+        for(Searcher s: fstLayer){
+            ret.add(s.code);
+        }
+        for(String str: ret) {
+            sndLayer.addAll(decode(str, false));
+        }
+        ret.clear();
+        for(Searcher s: sndLayer){
+            ret.add(s.code);
+        }
+        for(String str: ret){
+            trdLayer.addAll(decode(str, false));
+        }
+        int min=Integer.MAX_VALUE;
+        for(Searcher s: trdLayer){
+            min=Math.min(min, s.code.length());
+        }
+        int numPart = Integer.parseInt(code.substring(0, code.length()-1));
+        return min*numPart;
+    }
+    public static ArrayList<Searcher> decode(String code, boolean isKeypadInput){
+        ArrayList<Searcher> result = new ArrayList<>();
+        if(isKeypadInput){
+            int current_x = 3, current_y = 2;
+            int target_x=0, target_y=0;
+            for(int i = 0; i < code.length(); i++){
+                int minLen=Integer.MAX_VALUE;
+                char curr=code.charAt(i);
+                for(int j=0; j<4; j++){
+                    for(int k=0; k<3; k++){
+                        if(keypad[j][k]==curr){
+                            target_x=j;
+                            target_y=k;
+                        }
+                    }
+                }
+                Queue<KSearcher> queue = new LinkedList<>();
+                if(result.isEmpty()){
+                    queue.add(new KSearcher(current_x, current_y, ""));
+                }else{
+                    for(Searcher s: result){
+                        if (s instanceof KSearcher ks){
+                            ks.setUp();
+                            queue.add(ks);
+                        }
+                    }
+                    result.clear();
+                }
+                while(!queue.isEmpty()) {
+                    KSearcher s = queue.poll();
+                    if (makesKeypadSense(s.x - 1, s.y)){
+                        if(!s.visited[s.x - 1][s.y]) {
+                            s.visited[s.x - 1][s.y] = true;
+                            KSearcher up = new KSearcher(s, '^');
+                            up.x -= 1;
+                            queue.add(up);
+                        }
+                    }
+                    if (makesKeypadSense(s.x, s.y - 1)) {
+                        if (!s.visited[s.x][s.y - 1]) {
+                            s.visited[s.x][s.y - 1] = true;
+                            KSearcher left = new KSearcher(s, '<');
+                            left.y -= 1;
+                            queue.add(left);
+                        }
+                    }
+                    if (makesKeypadSense(s.x, s.y + 1)) {
+                        if (!s.visited[s.x][s.y + 1]) {
+                            s.visited[s.x][s.y + 1] = true;
+                            KSearcher right = new KSearcher(s, '>');
+                            right.y += 1;
+                            queue.add(right);
+                        }
+                    }
+                    if (makesKeypadSense(s.x + 1, s.y)){
+                        if (!s.visited[s.x + 1][s.y]) {
+                           s.visited[s.x + 1][s.y] = true;
+                            KSearcher down = new KSearcher(s, 'v');
+                            down.x += 1;
+                            queue.add(down);
+                        }
+                    }
+                    if(s.x==target_x && s.y==target_y){
+                        s.code+='A';
+                        if(s.code.length()<minLen){
+                            minLen=s.code.length();
+                            result.clear();
+                            result.add(s);
+                        }else if(s.code.length()==minLen){
+                            result.add(s);
+                        }
                     }
                 }
             }
-
-            if (current_x == null_x) { // Jesteśmy w "niebezpiecznym" rzędzie (0)
-                // Musimy najpierw wykonać ruch pionowy
-                while (result_x < current_x) { current_x--; sb.append('^'); }
-                while (result_x > current_x) { current_x++; sb.append('v'); }
-                // Potem ruch poziomy
-                while (result_y < current_y) { current_y--; sb.append('<'); }
-                while (result_y > current_y) { current_y++; sb.append('>'); }
+        }else{
+            int current_x = 0, current_y = 2;
+            int target_x=0, target_y=0;
+            for(int i = 0; i < code.length(); i++){
+                int minLen=Integer.MAX_VALUE;
+                char curr=code.charAt(i);
+                for(int j=0; j<2; j++){
+                    for(int k=0; k<3; k++){
+                        if(robotControl[j][k]==curr){
+                            target_x=j;
+                            target_y=k;
+                        }
+                    }
+                }
+                Queue<RSearcher> queue = new LinkedList<>();
+                if(result.isEmpty()){
+                    queue.add(new RSearcher(current_x, current_y, ""));
+                }else{
+                    for(Searcher s: result){
+                        if(s instanceof RSearcher rs){
+                            rs.setUp();
+                            queue.add(rs);
+                        }
+                    }
+                    result.clear();
+                }
+                while(!queue.isEmpty()) {
+                    RSearcher s = queue.poll();
+                    if(makesRobotSense(s.x - 1, s.y)){
+                        if(!s.visited[s.x - 1][s.y]) {
+                            s.visited[s.x - 1][s.y] = true;
+                            RSearcher up = new RSearcher(s, '^');
+                            up.x -= 1;
+                            queue.add(up);
+                        }
+                    }
+                    if(makesRobotSense(s.x, s.y - 1)) {
+                        if (!s.visited[s.x][s.y - 1]) {
+                            s.visited[s.x][s.y - 1] = true;
+                            RSearcher left = new RSearcher(s, '<');
+                            left.y -= 1;
+                            queue.add(left);
+                        }
+                    }
+                    if(makesRobotSense(s.x, s.y + 1)) {
+                        if (!s.visited[s.x][s.y + 1]) {
+                            s.visited[s.x][s.y + 1] = true;
+                            RSearcher right = new RSearcher(s, '>');
+                            right.y += 1;
+                            queue.add(right);
+                        }
+                    }
+                    if (makesRobotSense(s.x + 1, s.y)){
+                        if (!s.visited[s.x + 1][s.y]) {
+                            s.visited[s.x + 1][s.y] = true;
+                            RSearcher down = new RSearcher(s, 'v');
+                            down.x += 1;
+                            queue.add(down);
+                        }
+                    }
+                    if(s.x==target_x && s.y==target_y){
+                        s.code+='A';
+                        if(s.code.length()<minLen){
+                            minLen=s.code.length();
+                            result.clear();
+                            result.add(s);
+                        }else if(s.code.length()==minLen){
+                            result.add(s);
+                        }
+                    }
+                }
             }
-            else if (current_y == null_y) { // Jesteśmy w "niebezpiecznej" kolumnie (0)
-                // Musimy najpierw wykonać ruch poziomy
-                while (result_y < current_y) { current_y--; sb.append('<'); }
-                while (result_y > current_y) { current_y++; sb.append('>'); }
-                // Potem ruch pionowy
-                while (result_x < current_x) { current_x--; sb.append('^'); }
-                while (result_x > current_x) { current_x++; sb.append('v'); }
-            }
-            else { // Jesteśmy w "bezpiecznym" miejscu (rząd 1, kolumny 1 lub 2)
-                // Kolejność dowolna, np. najpierw pionowo
-                while (result_x < current_x) { current_x--; sb.append('^'); }
-                while (result_x > current_x) { current_x++; sb.append('v'); }
-                // Potem poziomo
-                while (result_y < current_y) { current_y--; sb.append('<'); }
-                while (result_y > current_y) { current_y++; sb.append('>'); }
-            }
-            sb.append('A'); // Wciśnij klawisz
         }
-        return sb.toString();
+        return result;
     }
     public static void main(String[] args) {
         load();
         int count=0;
-        for(int i=0; i<codes.size(); i++){
-            int numPart=Integer.parseInt((codes.get(i).substring(0, codes.get(i).length()-1)));
-            System.out.println(numPart+" * "+(robotToRobot(robotToRobot(keyToRobot(codes.get(i))))).length());
-            count+=numPart*(robotToRobot(robotToRobot(keyToRobot(codes.get(i))))).length();
-            System.out.println(robotToRobot(robotToRobot(keyToRobot(codes.get(i)))));
-            System.out.println(robotToRobot(keyToRobot(codes.get(i))));
-            System.out.println(keyToRobot(codes.get(i)));
-            System.out.println(codes.get(i));
-            System.out.println(numPart*(robotToRobot(robotToRobot(keyToRobot(codes.get(i))))).length());
+        for(String key : codes){
+            count+=runCode(key);
         }
         System.out.println(count);
     }
